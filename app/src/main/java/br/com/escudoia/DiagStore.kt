@@ -40,6 +40,8 @@ object DiagStore {
         context.getSharedPreferences(NOME, Context.MODE_PRIVATE).getInt("quantidade", 0)
 
     fun limpar(context: Context) {
-        context.getSharedPreferences(NOME, Context.MODE_PRIVATE).edit().clear().apply()
+        val p = context.getSharedPreferences(NOME, Context.MODE_PRIVATE)
+        val conectado = p.getLong("conectado", 0L)
+        p.edit().clear().putLong("conectado", conectado).apply()
     }
 }
