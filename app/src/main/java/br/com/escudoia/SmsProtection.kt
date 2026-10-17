@@ -41,8 +41,12 @@ object SmsProtection {
             .containsMatchIn(s)
         val ameacaFinanceira = Regex("bloque|suspend|cancel|irregular|regulariz|revalid|atualiz|confirm|inativ")
             .containsMatchIn(s)
-        val pedeSegredo = Regex("(envie|informe|digite|passe|compartilhe).{0,50}(codigo|token|senha|pin)")
-            .containsMatchIn(s)
+        val semNegacoes = s.replace(
+            Regex("\\b(?:nao|nunca|jamais)\\s+(?:(?:o|seu|esse)\\s+)?(?:compartilhe|envie|informe|digite|passe|mande)\\b"),
+            ""
+        )
+        val pedeSegredo = Regex("\\b(envie|informe|digite|passe|compartilhe)\\b.{0,50}\\b(codigo|token|senha|pin)\\b")
+            .containsMatchIn(semNegacoes)
 
         val motivos = base.motivos.toMutableList()
         val golpeEntrega = temLink && mencionaEntrega && problemaEntrega
