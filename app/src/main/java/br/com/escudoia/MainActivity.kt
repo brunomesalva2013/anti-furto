@@ -19,6 +19,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
+import android.view.View
+import android.view.WindowInsets
 import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
@@ -44,8 +46,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = escuro
-        window.navigationBarColor = escuro
+        if (Build.VERSION.SDK_INT >= 35) {
+            window.statusBarColor = Color.TRANSPARENT
+            window.navigationBarColor = Color.TRANSPARENT
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility =
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        } else {
+            window.statusBarColor = escuro
+            window.navigationBarColor = escuro
+        }
         tts = TextToSpeech(this, this)
         if (!prefs.getBoolean("visto", false)) boasVindas() else inicio()
         abrirCompartilhamento(intent)
@@ -79,6 +89,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun tela(nome: String, titulo: String) {
         pagina = nome
         val scroll = ScrollView(this).apply { isFillViewport = true }
+        if (Build.VERSION.SDK_INT >= 35) {
+            scroll.setOnApplyWindowInsetsListener { v, insets ->
+                val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                insets
+            }
+        }
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(246, 249, 249))
