@@ -2,6 +2,10 @@ package br.com.escudoia
 
 import android.Manifest
 import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Intent
@@ -15,6 +19,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
+import android.view.View
+import android.view.WindowInsets
 import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
@@ -40,8 +46,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = escuro
-        window.navigationBarColor = escuro
+        if (Build.VERSION.SDK_INT >= 35) {
+            window.statusBarColor = Color.TRANSPARENT
+            window.navigationBarColor = Color.TRANSPARENT
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility =
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        } else {
+            window.statusBarColor = escuro
+            window.navigationBarColor = escuro
+        }
         tts = TextToSpeech(this, this)
         if (!prefs.getBoolean("visto", false)) boasVindas() else inicio()
         abrirCompartilhamento(intent)
@@ -75,6 +89,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun tela(nome: String, titulo: String) {
         pagina = nome
         val scroll = ScrollView(this).apply { isFillViewport = true }
+        if (Build.VERSION.SDK_INT >= 35) {
+            scroll.setOnApplyWindowInsetsListener { v, insets ->
+                val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                insets
+            }
+        }
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(246, 249, 249))
@@ -157,16 +178,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun boasVindas() {
-        tela("bemvindo", "Bem-vindo! Você não está sozinho.")
-        caixa("A ESCUDO IA ajuda você a perceber mensagens suspeitas e pedir ajuda.\n\n1. Você decide se ativa a análise automática de prévias do WhatsApp.\n\n2. O aplicativo pode avisar sobre riscos, quando o Android permitir.\n\n3. Você pode cadastrar alguém da família para pedir ajuda.")
-        texto("Não lemos conversas completas nem enviamos mensagens automaticamente para familiares. Nenhuma análise garante segurança.", 18f)
-        botao("ENTENDI. COMEÇAR") {
+        tela("bemvindo", "Bem-vindo! Estamos aqui para ajudar.")
+        caixa("A ESCUDO IA ajuda você a identificar mensagens suspeitas e pedir ajuda à família.")
+        botao("COMEÇAR AGORA") {
             prefs.edit().putBoolean("visto", true).apply()
             inicio()
         }
         botao("OUVIR EXPLICAÇÃO", escuro) {
-            falar("A Escudo IA ajuda a perceber golpes. Você escolhe as permissões e pode pedir ajuda à família.")
+            falar("A Escudo IA ajuda a perceber possíveis golpes. Você escolhe as permissões e pode pedir ajuda à família.")
         }
+        texto("Depois de começar, você poderá ativar a análise de prévias autorizadas do WhatsApp e cadastrar uma pessoa de confiança.", 18f)
+        texto("Nenhuma análise garante segurança. O aplicativo não lê conversas completas nem envia mensagens automaticamente para familiares.", 17f)
     }
 
     private fun listenerAtivo(): Boolean {
@@ -192,6 +214,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         botao("VERIFICAR MENSAGEM") { analisarMensagem() }
         botao("VERIFICAR LINK") { analisarLink() }
         botao("ANTES DE FAZER UM PIX") { pix() }
+        botao("TESTAR ALERTA DE PIX (SIMULAÇÃO)", vermelho) { testarAlertaSimulado() }
         botao("VER EXEMPLO DE GOLPE", escuro) {
             resultado(RiskEngine.mensagem("Mãe, troquei de número. Faz um Pix agora? É urgente."), true)
         }
@@ -236,6 +259,46 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         texto("Esta versão só analisa prévias que realmente aparecem nas notificações; não lê conversas completas. Prévia escondida ou acesso negado impede a análise.", 17f)
         voltar()
+    }
+
+    private fun testarAlertaSimulado() {
+        val textoFicticio = "Oi, mãe! Troquei de número. Preciso de um Pix de R$ 850 agora, é urgente."
+        val analise = RiskEngine.mensagem(textoFicticio)
+        if (analise.risco != Risk.ALTO) {
+            aviso("O teste do detector não passou. Não considere a proteção validada.")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 43)
+            aviso("Autorize as notificações da ESCUDO IA no Android e toque novamente em TESTAR ALERTA.")
+            return
+        }
+        val gerente = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val canal = "escudo_teste"
+        gerente.createNotificationChannel(
+            NotificationChannel(canal, "Simulações de segurança", NotificationManager.IMPORTANCE_HIGH)
+        )
+        val abrir = Intent(this, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(
+            this, 77, abrir, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val n = Notification.Builder(this, canal)
+            .setSmallIcon(R.drawable.escudo_icon)
+            .setContentTitle("TESTE ESCUDO IA — risco alto")
+            .setContentText("SIMULAÇÃO: número novo + pedido urgente de Pix.")
+            .setStyle(Notification.BigTextStyle().bigText(
+                "SIMULAÇÃO, NÃO É UM WHATSAPP REAL. A mensagem fictícia combina mudança de número, Pix e urgência. Não transfira dinheiro."
+            ))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .build()
+        gerente.notify(775, n)
+        AlertDialog.Builder(this)
+            .setTitle("Teste de alerta enviado")
+            .setMessage("O detector identificou risco alto em uma mensagem fictícia. Deslize a barra de notificações do celular para procurar o aviso 'TESTE ESCUDO IA'.\n\nIsso comprova apenas o teste interno, NÃO que o WhatsApp está sendo monitorado corretamente. Para testar o WhatsApp, receba uma mensagem de teste de outro aparelho.")
+            .setPositiveButton("Entendi", null)
+            .show()
     }
 
     private fun analisarMensagem(inicial: String = "") {
