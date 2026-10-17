@@ -49,16 +49,9 @@ jobs:
             adb shell am start -W -n br.com.escudoia/.MainActivity
             sleep 8
             adb shell dumpsys activity activities > atividades.txt
-            if ! grep -q "br.com.escudoia" atividades.txt; then
-              echo "A tela da ESCUDO IA nao foi localizada."
-              exit 1
-            fi
+            grep -q "br.com.escudoia" atividades.txt
             adb logcat -d -s AndroidRuntime:E > crashes.txt
-            if grep -q "FATAL EXCEPTION" crashes.txt; then
-              echo "O emulador registrou uma falha fatal."
-              cat crashes.txt
-              exit 1
-            fi
+            ! grep -q "FATAL EXCEPTION" crashes.txt
             adb exec-out screencap -p > tela-escudo-ia.png
       - name: Salvar tela e diagnosticos
         if: always()
