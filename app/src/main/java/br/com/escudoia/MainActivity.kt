@@ -2,6 +2,10 @@ package br.com.escudoia
 
 import android.Manifest
 import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Intent
@@ -192,6 +196,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         botao("VERIFICAR MENSAGEM") { analisarMensagem() }
         botao("VERIFICAR LINK") { analisarLink() }
         botao("ANTES DE FAZER UM PIX") { pix() }
+        botao("TESTAR ALERTA DE PIX (SIMULAÇÃO)", vermelho) { testarAlertaSimulado() }
         botao("VER EXEMPLO DE GOLPE", escuro) {
             resultado(RiskEngine.mensagem("Mãe, troquei de número. Faz um Pix agora? É urgente."), true)
         }
@@ -236,6 +241,46 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         texto("Esta versão só analisa prévias que realmente aparecem nas notificações; não lê conversas completas. Prévia escondida ou acesso negado impede a análise.", 17f)
         voltar()
+    }
+
+    private fun testarAlertaSimulado() {
+        val textoFicticio = "Oi, mãe! Troquei de número. Preciso de um Pix de R$ 850 agora, é urgente."
+        val analise = RiskEngine.mensagem(textoFicticio)
+        if (analise.risco != Risk.ALTO) {
+            aviso("O teste do detector não passou. Não considere a proteção validada.")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 43)
+            aviso("Autorize as notificações da ESCUDO IA no Android e toque novamente em TESTAR ALERTA.")
+            return
+        }
+        val gerente = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val canal = "escudo_teste"
+        gerente.createNotificationChannel(
+            NotificationChannel(canal, "Simulações de segurança", NotificationManager.IMPORTANCE_HIGH)
+        )
+        val abrir = Intent(this, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(
+            this, 77, abrir, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val n = Notification.Builder(this, canal)
+            .setSmallIcon(R.drawable.escudo_icon)
+            .setContentTitle("TESTE ESCUDO IA — risco alto")
+            .setContentText("SIMULAÇÃO: número novo + pedido urgente de Pix.")
+            .setStyle(Notification.BigTextStyle().bigText(
+                "SIMULAÇÃO, NÃO É UM WHATSAPP REAL. A mensagem fictícia combina mudança de número, Pix e urgência. Não transfira dinheiro."
+            ))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .build()
+        gerente.notify(775, n)
+        AlertDialog.Builder(this)
+            .setTitle("Teste de alerta enviado")
+            .setMessage("O detector identificou risco alto em uma mensagem fictícia. Deslize a barra de notificações do celular para procurar o aviso 'TESTE ESCUDO IA'.\n\nIsso comprova apenas o teste interno, NÃO que o WhatsApp está sendo monitorado corretamente. Para testar o WhatsApp, receba uma mensagem de teste de outro aparelho.")
+            .setPositiveButton("Entendi", null)
+            .show()
     }
 
     private fun analisarMensagem(inicial: String = "") {
