@@ -201,12 +201,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun inicio() {
         tela("inicio", "Sua segurança em primeiro lugar")
-        val ligado = prefs.getBoolean("protege", false) && listenerAtivo()
-        caixa(if (ligado)
-            "PROTEÇÃO ATIVADA\nA ESCUDO IA pode verificar prévias autorizadas do WhatsApp e avisar quando encontrar sinais de risco alto."
-        else
-            "PROTEÇÃO DESLIGADA OU INCOMPLETA\nToque abaixo para configurar os avisos.",
-            if (ligado) Color.rgb(225, 245, 236) else Color.rgb(255, 247, 223))
+        val whatsappAtivo = prefs.getBoolean("protege", false)
+        val smsAtivo = prefs.getBoolean("sms_protege", false)
+        val avisosAtivos = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val pronto = (whatsappAtivo || smsAtivo) && listenerAtivo() && avisosAtivos
+        caixa(
+            if (pronto) "PROTEÇÃO ATIVADA\nWhatsApp: " + (if (whatsappAtivo) "ligado" else "desligado") +
+                "\nSMS: " + (if (smsAtivo) "ligado" else "desligado")
+            else "PROTEÇÃO DESLIGADA OU INCOMPLETA\nConfigure o acesso e autorize WhatsApp e SMS separadamente.",
+            if (pronto) Color.rgb(225, 245, 236) else Color.rgb(255, 247, 223)
+        )
         botao("ATIVAR / VER MINHA PROTEÇÃO") { protecao() }
         botao("MINHA PESSOA DE CONFIANÇA", escuro) { confianca() }
         botao("PRECISO DE AJUDA AGORA", vermelho) { emergencia() }
@@ -214,12 +219,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         botao("VERIFICAR MENSAGEM") { analisarMensagem() }
         botao("VERIFICAR LINK") { analisarLink() }
         botao("ANTES DE FAZER UM PIX") { pix() }
+        botao("TESTAR ALERTA DE SMS (SIMULAÇÃO)", vermelho) { testarSmsSimulado() }
         botao("TESTAR ALERTA DE PIX (SIMULAÇÃO)", vermelho) { testarAlertaSimulado() }
         botao("VER EXEMPLO DE GOLPE", escuro) {
             resultado(RiskEngine.mensagem("Mãe, troquei de número. Faz um Pix agora? É urgente."), true)
         }
         botao("LETRAS MAIORES / AJUSTES", escuro) { ajustes() }
-        texto("Versão experimental. A análise é baseada em regras locais e não consegue detectar todos os golpes.", 17f)
+        texto("Versão experimental: só prévias exibidas em notificações podem ser analisadas. Não conseguimos detectar todos os golpes.", 17f)
     }
 
     private fun protecao() {
