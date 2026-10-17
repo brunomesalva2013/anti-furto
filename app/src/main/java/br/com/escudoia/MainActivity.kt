@@ -74,7 +74,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun tela(nome: String, titulo: String) {
         pagina = nome
-        val scroll = ScrollView(this).apply { fillViewport = true }
+        val scroll = ScrollView(this).apply { isFillViewport = true }
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(246, 249, 249))
