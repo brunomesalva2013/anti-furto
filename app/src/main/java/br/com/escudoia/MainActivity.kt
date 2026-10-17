@@ -230,40 +230,60 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun protecao() {
         tela("protecao", "Minha proteção automática")
-        val autorizado = prefs.getBoolean("protege", false)
-        val listener = listenerAtivo()
-        val podeAvisar = Build.VERSION.SDK_INT < 33 ||
+        val whatsapp = prefs.getBoolean("protege", false)
+        val sms = prefs.getBoolean("sms_protege", false)
+        val acesso = listenerAtivo()
+        val avisos = Build.VERSION.SDK_INT < 33 ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        caixa("Análise das prévias: " + if (autorizado) "AUTORIZADA" else "DESLIGADA")
-        caixa("Acesso no Android: " + if (listener) "PERMITIDO" else "NÃO PERMITIDO")
-        caixa("Avisos da ESCUDO IA: " + if (podeAvisar) "PERMITIDOS" else "NÃO PERMITIDOS")
-        texto("A permissão do Android pode mostrar notificações de outros aplicativos. A ESCUDO IA processa somente prévias do WhatsApp (e Business, se você ativar). Não armazena nem envia o texto recebido.", 18f)
-        if (!autorizado) botao("1 · AUTORIZAR ANÁLISE") {
-            AlertDialog.Builder(this).setTitle("Você autoriza?")
-                .setMessage("A ESCUDO IA analisará localmente prévias de notificações do WhatsApp em busca de sinais de golpe. Você pode desligar quando quiser.")
-                .setNegativeButton("Agora não", null)
+
+        caixa("WHATSAPP: " + (if (whatsapp) "AUTORIZADO" else "DESLIGADO") +
+            "\nSMS: " + (if (sms) "AUTORIZADO" else "DESLIGADO"))
+        caixa("Acesso às notificações no Android: " + (if (acesso) "PERMITIDO" else "NÃO PERMITIDO"))
+        caixa("Alertas da ESCUDO IA: " + (if (avisos) "PERMITIDOS" else "NÃO PERMITIDOS"))
+
+        texto("Escolha o que deseja proteger. O Android dá acesso técnico a várias notificações, mas a ESCUDO IA só processa prévias do WhatsApp e/ou dos apps de SMS selecionados.", 18f)
+        if (!whatsapp) botao("ATIVAR PROTEÇÃO DO WHATSAPP") {
+            AlertDialog.Builder(this).setTitle("Autorizar WhatsApp?")
+                .setMessage("A ESCUDO IA poderá examinar localmente prévias de notificações do WhatsApp. Não lê conversas completas. Você pode desligar quando quiser.")
+                .setNegativeButton("Não", null)
                 .setPositiveButton("Eu autorizo") { _, _ ->
                     prefs.edit().putBoolean("protege", true).apply()
                     protecao()
                 }.show()
-        }
-        if (autorizado) {
-            botao("2 · PERMITIR ACESSO NO ANDROID") {
-                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            }
-            if (!podeAvisar && Build.VERSION.SDK_INT >= 33) botao("3 · PERMITIR AVISOS") {
-                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
-            }
-            botao(if (prefs.getBoolean("business", false)) "WHATSAPP BUSINESS: INCLUÍDO" else "WHATSAPP BUSINESS: NÃO INCLUÍDO", escuro) {
-                prefs.edit().putBoolean("business", !prefs.getBoolean("business", false)).apply()
-                protecao()
-            }
-            botao("DESLIGAR ANÁLISE", vermelho) {
+        } else {
+            botao("DESLIGAR PROTEÇÃO DO WHATSAPP", escuro) {
                 prefs.edit().putBoolean("protege", false).apply()
                 protecao()
             }
+            botao(if (prefs.getBoolean("business", false)) "WHATSAPP BUSINESS: INCLUÍDO" else "INCLUIR WHATSAPP BUSINESS", escuro) {
+                prefs.edit().putBoolean("business", !prefs.getBoolean("business", false)).apply()
+                protecao()
+            }
         }
-        texto("Esta versão só analisa prévias que realmente aparecem nas notificações; não lê conversas completas. Prévia escondida ou acesso negado impede a análise.", 17f)
+
+        if (!sms) botao("ATIVAR PROTEÇÃO AUTOMÁTICA DE SMS") {
+            AlertDialog.Builder(this).setTitle("Autorizar prévias de SMS?")
+                .setMessage("A ESCUDO IA analisará localmente somente o texto mostrado nas notificações de aplicativos de SMS compatíveis, como Google Mensagens e Samsung Mensagens. Não lê a caixa de SMS, não confirma remetentes e não envia mensagens a servidores ou familiares. Você pode desligar quando quiser. O acesso a notificações é uma permissão sensível.")
+                .setNegativeButton("Não autorizar", null)
+                .setPositiveButton("Eu autorizo") { _, _ ->
+                    prefs.edit().putBoolean("sms_protege", true).apply()
+                    protecao()
+                }.show()
+        } else {
+            botao("DESLIGAR PROTEÇÃO DE SMS", escuro) {
+                prefs.edit().putBoolean("sms_protege", false).apply()
+                protecao()
+            }
+        }
+        if (whatsapp || sms) {
+            botao("PERMITIR ACESSO NO ANDROID") {
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
+            if (!avisos && Build.VERSION.SDK_INT >= 33) botao("PERMITIR AVISOS DA ESCUDO IA") {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
+            }
+        }
+        texto("A ESCUDO IA não examina SMS sem prévia, SMS antigos, nem aplicativos incompatíveis. A ausência de alerta NÃO significa segurança. Não há envio automático de alertas a familiares.", 17f)
         voltar()
     }
 
