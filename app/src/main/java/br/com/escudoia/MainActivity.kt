@@ -178,16 +178,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun boasVindas() {
-        tela("bemvindo", "Bem-vindo! Você não está sozinho.")
-        caixa("A ESCUDO IA ajuda você a perceber mensagens suspeitas e pedir ajuda.\n\n1. Você decide se ativa a análise automática de prévias do WhatsApp.\n\n2. O aplicativo pode avisar sobre riscos, quando o Android permitir.\n\n3. Você pode cadastrar alguém da família para pedir ajuda.")
-        texto("Não lemos conversas completas nem enviamos mensagens automaticamente para familiares. Nenhuma análise garante segurança.", 18f)
-        botao("ENTENDI. COMEÇAR") {
+        tela("bemvindo", "Bem-vindo! Estamos aqui para ajudar.")
+        caixa("A ESCUDO IA ajuda você a identificar mensagens suspeitas e pedir ajuda à família.")
+        botao("COMEÇAR AGORA") {
             prefs.edit().putBoolean("visto", true).apply()
             inicio()
         }
         botao("OUVIR EXPLICAÇÃO", escuro) {
-            falar("A Escudo IA ajuda a perceber golpes. Você escolhe as permissões e pode pedir ajuda à família.")
+            falar("A Escudo IA ajuda a perceber possíveis golpes. Você escolhe as permissões e pode pedir ajuda à família.")
         }
+        texto("Depois de começar, você poderá ativar a análise de prévias autorizadas do WhatsApp e cadastrar uma pessoa de confiança.", 18f)
+        texto("Nenhuma análise garante segurança. O aplicativo não lê conversas completas nem envia mensagens automaticamente para familiares.", 17f)
     }
 
     private fun listenerAtivo(): Boolean {
