@@ -17,6 +17,8 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.view.View
@@ -28,6 +30,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.Date
 
 /**
  * Protótipo Android nativo: interface grande, simples e local.
@@ -39,6 +43,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var pagina = "inicio"
     private var tts: TextToSpeech? = null
     private var voz = false
+    private val diagHandler = Handler(Looper.getMainLooper())
+    private var diagRunnable: Runnable? = null
     private val verde = Color.rgb(0, 104, 109)
     private val escuro = Color.rgb(20, 46, 62)
     private val vermelho = Color.rgb(145, 27, 42)
@@ -87,6 +93,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun tela(nome: String, titulo: String) {
+        pararDiagnostico()
         pagina = nome
         val scroll = ScrollView(this).apply { isFillViewport = true }
         if (Build.VERSION.SDK_INT >= 35) {
@@ -213,6 +220,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (pronto) Color.rgb(225, 245, 236) else Color.rgb(255, 247, 223)
         )
         botao("ATIVAR / VER MINHA PROTEÇÃO") { protecao() }
+        botao("TESTE REAL: VER SE O SMS FOI ANALISADO", escuro) { diagnostico() }
         botao("MINHA PESSOA DE CONFIANÇA", escuro) { confianca() }
         botao("PRECISO DE AJUDA AGORA", vermelho) { emergencia() }
         texto("Mais ferramentas", 23f, escuro, true)
@@ -226,6 +234,84 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         botao("LETRAS MAIORES / AJUSTES", escuro) { ajustes() }
         texto("Versão experimental: só prévias exibidas em notificações podem ser analisadas. Não conseguimos detectar todos os golpes.", 17f)
+    }
+
+    private fun pararDiagnostico() {
+        diagRunnable?.let { diagHandler.removeCallbacks(it) }
+        diagRunnable = null
+    }
+
+    private fun horario(ts: Long): String =
+        if (ts <= 0L) "Nenhum registro" else
+            SimpleDateFormat("dd/MM/yyyy 'às' HH:mm:ss", Locale("pt", "BR")).format(Date(ts))
+
+    private fun diagnostico() {
+        tela("diagnostico", "Teste real de mensagens SMS")
+        caixa("Envie um SMS real, de outro celular, usando o aplicativo de SMS normal. Não use o botão de simulação: ele NÃO testa o recebimento de SMS.")
+        val quadro = TextView(this).apply {
+            textSize = sp(20f)
+            setTextColor(escuro)
+            setLineSpacing(dp(4).toFloat(), 1.1f)
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            background = fundo(Color.WHITE)
+        }
+        root.addView(quadro, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+
+        val atualizar = object : Runnable {
+            override fun run() {
+                if (pagina != "diagnostico") return
+                val habilitado = prefs.getBoolean("sms_protege", false)
+                val acceso = listenerAtivo()
+                val avisoPermitido = Build.VERSION.SDK_INT < 33 ||
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                val total = DiagStore.total(this@MainActivity)
+                val codigo = DiagStore.resultado(this@MainActivity)
+                val motivo = when (codigo) {
+                    "ALTO_ALERTA_SOLICITADO" -> "RISCO ALTO: o Android recebeu o pedido para mostrar nosso alerta"
+                    "ALTO_ERRO_AO_AVISAR" -> "RISCO ALTO, mas houve erro ao solicitar o alerta"
+                    "ALTO_SEM_PERMISSAO_DE_AVISOS" -> "RISCO ALTO: faltou permitir avisos da ESCUDO IA"
+                    "ALTO_AVISO_REPETIDO" -> "Risco alto: aviso repetido, não enviado novamente"
+                    "ATENCAO_SEM_ALERTA" -> "Atenção: sem alerta de risco alto"
+                    "SEM_SINAIS_SEM_ALERTA" -> "Nenhum indício forte: sem alerta"
+                    "DADOS_INSUFICIENTES" -> "Dados insuficientes"
+                    "PREVIA_INDISPONIVEL" -> "Notificação recebida, mas o conteúdo estava indisponível"
+                    else -> "Ainda não houve classificação de SMS"
+                }
+                val app = when (DiagStore.aplicativo(this@MainActivity)) {
+                    "com.google.android.apps.messaging" -> "Google Mensagens"
+                    "com.samsung.android.messaging" -> "Samsung Mensagens"
+                    "com.android.mms" -> "Mensagens do Android"
+                    "com.motorola.messaging" -> "Motorola Mensagens"
+                    "com.sonyericsson.conversations" -> "Sony Mensagens"
+                    else -> "Não identificado"
+                }
+                quadro.text =
+                    "Proteção de SMS: " + (if (habilitado) "ATIVADA" else "DESATIVADA") +
+                    "\nPermissão para ler notificações: " + (if (acceso) "PERMITIDA" else "NÃO PERMITIDA") +
+                    "\nPermissão para mostrar alertas: " + (if (avisoPermitido) "PERMITIDA" else "NÃO PERMITIDA") +
+                    "\nServiço conectado pela última vez: " + horario(DiagStore.ultimaConexao(this@MainActivity)) +
+                    "\n\nNotificações SMS observadas: " + total +
+                    "\nÚltima notificação de SMS: " + horario(DiagStore.ultimoSms(this@MainActivity)) +
+                    "\nAplicativo: " + app +
+                    "\nResultado: " + motivo
+
+                diagHandler.postDelayed(this, 2_000L)
+            }
+        }
+        diagRunnable = atualizar
+        diagHandler.post(atualizar)
+
+        texto("O painel atualiza automaticamente a cada 2 segundos. Só armazena o horário, a origem e o resultado; nunca o texto do SMS ou número de telefone.", 17f)
+        botao("ATIVAR / VER PERMISSÕES", escuro) { protecao() }
+        botao("LIMPAR RESULTADOS DE TESTE", vermelho) {
+            AlertDialog.Builder(this)
+                .setTitle("Limpar diagnóstico?")
+                .setMessage("Isso apagará contagens e resultados locais do teste, sem alterar a proteção.")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Limpar") { _, _ -> DiagStore.limpar(this) }
+                .show()
+        }
+        voltar()
     }
 
     private fun protecao() {
@@ -504,6 +590,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             ajustes()
         }
         caixa("Proteção opcional: prévias autorizadas do WhatsApp e/ou de aplicativos de SMS selecionados, com autorizações separadas.\n\nMensagens analisadas não são armazenadas nem enviadas a servidores.\n\nPessoa de confiança fica somente neste aparelho.\n\nNão há alertas automáticos ao familiar nesta versão.\n\nA análise pode errar e não verifica a identidade dos remetentes nem a reputação real dos links. Use os canais oficiais.")
+        botao("VER DIAGNÓSTICO DE SMS", escuro) { diagnostico() }
         botao("REVER ACESSO ÀS NOTIFICAÇÕES", escuro) {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
@@ -513,6 +600,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Apagar") { _, _ ->
                     prefs.edit().clear().apply()
+                    DiagStore.limpar(this)
                     inicio()
                 }.show()
         }
@@ -544,6 +632,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        pararDiagnostico()
         tts?.stop()
         tts?.shutdown()
         super.onDestroy()
