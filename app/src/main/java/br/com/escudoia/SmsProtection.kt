@@ -31,8 +31,11 @@ object SmsProtection {
         )
         val base = RiskEngine.mensagem(texto)
         val s = normal(texto)
-        val temLink = Regex("https?://|www\\.|\\b(?:bit\\.ly|tinyurl\\.com|cutt\\.ly|is\\.gd)\\b", RegexOption.IGNORE_CASE)
-            .containsMatchIn(s)
+        val temLink = Regex(
+            "https?://|www\\.|\\b(?:bit\\.ly|tinyurl\\.com|cutt\\.ly|is\\.gd)\\b|" +
+            "\\b[a-z0-9][a-z0-9-]{1,62}\\.(?:com(?:\\.br)?|net(?:\\.br)?|org(?:\\.br)?|br|io|app|site|info)(?:\\b|/)",
+            RegexOption.IGNORE_CASE
+        ).containsMatchIn(s)
         val mencionaEntrega = Regex("\\b(encomenda|entrega|correios|transportadora|pacote|pedido)\\b")
             .containsMatchIn(s)
         val problemaEntrega = Regex("retid|pendente|taxa|libera|devolu|cobranca|pague|pagamento|regulariz")
