@@ -28,6 +28,20 @@ class SmsProtectionTest {
         assertEquals(Risk.SEM_SINAIS, SmsProtection.analisarPrevia("Seu código de acesso é 123456. Não compartilhe.").risco)
     }
 
+    @Test fun linkSemHttpsComCobrancaDeEncomendaTambemGeraAviso() {
+        assertEquals(
+            Risk.ALTO,
+            SmsProtection.analisarPrevia("Sua encomenda foi retida. Pague taxa em entrega-validar.com.br/liberar").risco
+        )
+    }
+
+    @Test fun orientacaoDeNaoEnviarCodigoNaoEUmGolpe() {
+        assertEquals(
+            Risk.SEM_SINAIS,
+            SmsProtection.analisarPrevia("Não envie seu código para ninguém.").risco
+        )
+    }
+
     @Test fun smsComumNaoGeraAlerta() {
         assertEquals(Risk.SEM_SINAIS, SmsProtection.analisarPrevia("Oi, tudo bem? Chego às 18h.").risco)
     }
