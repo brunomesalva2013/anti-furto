@@ -11,33 +11,71 @@ import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
+/**
+ * O Android entrega notificações à ESCUDO IA somente após o usuário autorizar
+ * acesso no sistema. A aplicação descarta as notificações não selecionadas,
+ * analisa somente prévias disponíveis e não armazena o conteúdo.
+ */
 class EscudoListener : NotificationListenerService() {
-    private var ultimoAviso = 0L
+    private val ultimosAlertas = mutableMapOf<String, Pair<Int, Long>>()
+    private val whatsapp = setOf("com.whatsapp", "com.whatsapp.w4b")
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        if (sbn == null || sbn.packageName !in setOf("com.whatsapp", "com.whatsapp.w4b")) return
-        val pref = getSharedPreferences("escudo", MODE_PRIVATE)
-        if (!pref.getBoolean("protege", false)) return
-        if (sbn.packageName == "com.whatsapp.w4b" && !pref.getBoolean("business", false)) return
+        if (sbn == null) return
+        val pacote = sbn.packageName
+        val prefs = getSharedPreferences("escudo", MODE_PRIVATE)
+        val origem = when {
+            pacote in whatsapp && prefs.getBoolean("protege", false) &&
+                (pacote != "com.whatsapp.w4b" || prefs.getBoolean("business", false)) -> "WhatsApp"
+            pacote in SmsProtection.aplicativosCompativeis && prefs.getBoolean("sms_protege", false) -> "SMS"
+            else -> return
+        }
+
         val extras = sbn.notification.extras ?: return
-        val texto = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
-        if (texto.isBlank() || RiskEngine.mensagem(texto).risco != Risk.ALTO) return
+        val trechos = listOfNotNull(
+            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
+            extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+        ) + (extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+            ?.map { it.toString() } ?: emptyList())
+        val previa = trechos.filter { it.isNotBlank() }.distinct().take(4).joinToString(" ").trim()
+        if (previa.isBlank()) return
+
+        val analise = if (origem == "SMS") SmsProtection.analisarPrevia(previa) else RiskEngine.mensagem(previa)
+        if (analise.risco != Risk.ALTO) return
+
+        // Evita disparos repetidos quando o app de mensagens atualiza uma notificação.
         val agora = System.currentTimeMillis()
-        if (agora - ultimoAviso < 60_000) return
-        ultimoAviso = agora
+        val chave = pacote
+        val anterior = ultimosAlertas[chave]
+        if (anterior != null && (anterior.first == previa.hashCode() || agora - anterior.second < 45_000L)) return
+        ultimosAlertas[chave] = previa.hashCode() to agora
+
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "escudo_alertas"
-        manager.createNotificationChannel(NotificationChannel(channelId,"Alertas de segurança",NotificationManager.IMPORTANCE_HIGH))
-        val abrir = Intent(this, MainActivity::class.java).putExtra("aviso_escudo", true)
-        val pending = PendingIntent.getActivity(this, 10, abrir, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val alerta = Notification.Builder(this, channelId)
+
+        val gerenciador = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val canal = "escudo_alertas"
+        gerenciador.createNotificationChannel(
+            NotificationChannel(canal, "Alertas de segurança", NotificationManager.IMPORTANCE_HIGH)
+        )
+        val id = if (origem == "SMS") 776 else 774
+        val abrir = Intent(this, MainActivity::class.java)
+            .putExtra("aviso_escudo", true)
+            .putExtra("aviso_origem", origem)
+        val pending = PendingIntent.getActivity(
+            this, id, abrir, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val aviso = Notification.Builder(this, canal)
             .setSmallIcon(R.drawable.escudo_icon)
-            .setContentTitle("ESCUDO IA — cuidado!")
-            .setContentText("Uma mensagem pode apresentar sinais de golpe. Abra para orientações.")
-            .setStyle(Notification.BigTextStyle().bigText("Uma prévia autorizada do WhatsApp apresentou sinais de possível golpe. Não envie dinheiro ou códigos antes de confirmar com um contato conhecido."))
-            .setContentIntent(pending).setAutoCancel(true)
-            .setCategory(Notification.CATEGORY_ALARM).build()
-        manager.notify(774, alerta)
+            .setContentTitle("ESCUDO IA — possível golpe em $origem")
+            .setContentText("Encontramos sinais de risco alto. Confira antes de agir.")
+            .setStyle(Notification.BigTextStyle().bigText(
+                "Uma prévia autorizada de $origem parece suspeita. Não abra links, transfira dinheiro nem informe códigos antes de confirmar por um canal oficial."
+            ))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_STATUS)
+            .build()
+        gerenciador.notify(id, aviso)
     }
 }

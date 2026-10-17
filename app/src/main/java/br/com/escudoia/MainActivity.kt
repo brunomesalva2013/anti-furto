@@ -187,7 +187,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         botao("OUVIR EXPLICAÇÃO", escuro) {
             falar("A Escudo IA ajuda a perceber possíveis golpes. Você escolhe as permissões e pode pedir ajuda à família.")
         }
-        texto("Depois de começar, você poderá ativar a análise de prévias autorizadas do WhatsApp e cadastrar uma pessoa de confiança.", 18f)
+        texto("Depois de começar, você poderá ativar separadamente a análise de prévias do WhatsApp e de SMS, além de cadastrar uma pessoa de confiança.", 18f)
         texto("Nenhuma análise garante segurança. O aplicativo não lê conversas completas nem envia mensagens automaticamente para familiares.", 17f)
     }
 
@@ -201,12 +201,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun inicio() {
         tela("inicio", "Sua segurança em primeiro lugar")
-        val ligado = prefs.getBoolean("protege", false) && listenerAtivo()
-        caixa(if (ligado)
-            "PROTEÇÃO ATIVADA\nA ESCUDO IA pode verificar prévias autorizadas do WhatsApp e avisar quando encontrar sinais de risco alto."
-        else
-            "PROTEÇÃO DESLIGADA OU INCOMPLETA\nToque abaixo para configurar os avisos.",
-            if (ligado) Color.rgb(225, 245, 236) else Color.rgb(255, 247, 223))
+        val whatsappAtivo = prefs.getBoolean("protege", false)
+        val smsAtivo = prefs.getBoolean("sms_protege", false)
+        val avisosAtivos = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val pronto = (whatsappAtivo || smsAtivo) && listenerAtivo() && avisosAtivos
+        caixa(
+            if (pronto) "PROTEÇÃO ATIVADA\nWhatsApp: " + (if (whatsappAtivo) "ligado" else "desligado") +
+                "\nSMS: " + (if (smsAtivo) "ligado" else "desligado")
+            else "PROTEÇÃO DESLIGADA OU INCOMPLETA\nConfigure o acesso e autorize WhatsApp e SMS separadamente.",
+            if (pronto) Color.rgb(225, 245, 236) else Color.rgb(255, 247, 223)
+        )
         botao("ATIVAR / VER MINHA PROTEÇÃO") { protecao() }
         botao("MINHA PESSOA DE CONFIANÇA", escuro) { confianca() }
         botao("PRECISO DE AJUDA AGORA", vermelho) { emergencia() }
@@ -214,51 +219,106 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         botao("VERIFICAR MENSAGEM") { analisarMensagem() }
         botao("VERIFICAR LINK") { analisarLink() }
         botao("ANTES DE FAZER UM PIX") { pix() }
+        botao("TESTAR ALERTA DE SMS (SIMULAÇÃO)", vermelho) { testarSmsSimulado() }
         botao("TESTAR ALERTA DE PIX (SIMULAÇÃO)", vermelho) { testarAlertaSimulado() }
         botao("VER EXEMPLO DE GOLPE", escuro) {
             resultado(RiskEngine.mensagem("Mãe, troquei de número. Faz um Pix agora? É urgente."), true)
         }
         botao("LETRAS MAIORES / AJUSTES", escuro) { ajustes() }
-        texto("Versão experimental. A análise é baseada em regras locais e não consegue detectar todos os golpes.", 17f)
+        texto("Versão experimental: só prévias exibidas em notificações podem ser analisadas. Não conseguimos detectar todos os golpes.", 17f)
     }
 
     private fun protecao() {
         tela("protecao", "Minha proteção automática")
-        val autorizado = prefs.getBoolean("protege", false)
-        val listener = listenerAtivo()
-        val podeAvisar = Build.VERSION.SDK_INT < 33 ||
+        val whatsapp = prefs.getBoolean("protege", false)
+        val sms = prefs.getBoolean("sms_protege", false)
+        val acesso = listenerAtivo()
+        val avisos = Build.VERSION.SDK_INT < 33 ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        caixa("Análise das prévias: " + if (autorizado) "AUTORIZADA" else "DESLIGADA")
-        caixa("Acesso no Android: " + if (listener) "PERMITIDO" else "NÃO PERMITIDO")
-        caixa("Avisos da ESCUDO IA: " + if (podeAvisar) "PERMITIDOS" else "NÃO PERMITIDOS")
-        texto("A permissão do Android pode mostrar notificações de outros aplicativos. A ESCUDO IA processa somente prévias do WhatsApp (e Business, se você ativar). Não armazena nem envia o texto recebido.", 18f)
-        if (!autorizado) botao("1 · AUTORIZAR ANÁLISE") {
-            AlertDialog.Builder(this).setTitle("Você autoriza?")
-                .setMessage("A ESCUDO IA analisará localmente prévias de notificações do WhatsApp em busca de sinais de golpe. Você pode desligar quando quiser.")
-                .setNegativeButton("Agora não", null)
+
+        caixa("WHATSAPP: " + (if (whatsapp) "AUTORIZADO" else "DESLIGADO") +
+            "\nSMS: " + (if (sms) "AUTORIZADO" else "DESLIGADO"))
+        caixa("Acesso às notificações no Android: " + (if (acesso) "PERMITIDO" else "NÃO PERMITIDO"))
+        caixa("Alertas da ESCUDO IA: " + (if (avisos) "PERMITIDOS" else "NÃO PERMITIDOS"))
+
+        texto("Escolha o que deseja proteger. O Android dá acesso técnico a várias notificações, mas a ESCUDO IA só processa prévias do WhatsApp e/ou dos apps de SMS selecionados.", 18f)
+        if (!whatsapp) botao("ATIVAR PROTEÇÃO DO WHATSAPP") {
+            AlertDialog.Builder(this).setTitle("Autorizar WhatsApp?")
+                .setMessage("A ESCUDO IA poderá examinar localmente prévias de notificações do WhatsApp. Não lê conversas completas. Você pode desligar quando quiser.")
+                .setNegativeButton("Não", null)
                 .setPositiveButton("Eu autorizo") { _, _ ->
                     prefs.edit().putBoolean("protege", true).apply()
                     protecao()
                 }.show()
-        }
-        if (autorizado) {
-            botao("2 · PERMITIR ACESSO NO ANDROID") {
-                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            }
-            if (!podeAvisar && Build.VERSION.SDK_INT >= 33) botao("3 · PERMITIR AVISOS") {
-                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
-            }
-            botao(if (prefs.getBoolean("business", false)) "WHATSAPP BUSINESS: INCLUÍDO" else "WHATSAPP BUSINESS: NÃO INCLUÍDO", escuro) {
-                prefs.edit().putBoolean("business", !prefs.getBoolean("business", false)).apply()
-                protecao()
-            }
-            botao("DESLIGAR ANÁLISE", vermelho) {
+        } else {
+            botao("DESLIGAR PROTEÇÃO DO WHATSAPP", escuro) {
                 prefs.edit().putBoolean("protege", false).apply()
                 protecao()
             }
+            botao(if (prefs.getBoolean("business", false)) "WHATSAPP BUSINESS: INCLUÍDO" else "INCLUIR WHATSAPP BUSINESS", escuro) {
+                prefs.edit().putBoolean("business", !prefs.getBoolean("business", false)).apply()
+                protecao()
+            }
         }
-        texto("Esta versão só analisa prévias que realmente aparecem nas notificações; não lê conversas completas. Prévia escondida ou acesso negado impede a análise.", 17f)
+
+        if (!sms) botao("ATIVAR PROTEÇÃO AUTOMÁTICA DE SMS") {
+            AlertDialog.Builder(this).setTitle("Autorizar prévias de SMS?")
+                .setMessage("A ESCUDO IA analisará localmente somente o texto mostrado nas notificações de aplicativos de SMS compatíveis, como Google Mensagens e Samsung Mensagens. Não lê a caixa de SMS, não confirma remetentes e não envia mensagens a servidores ou familiares. Você pode desligar quando quiser. O acesso a notificações é uma permissão sensível.")
+                .setNegativeButton("Não autorizar", null)
+                .setPositiveButton("Eu autorizo") { _, _ ->
+                    prefs.edit().putBoolean("sms_protege", true).apply()
+                    protecao()
+                }.show()
+        } else {
+            botao("DESLIGAR PROTEÇÃO DE SMS", escuro) {
+                prefs.edit().putBoolean("sms_protege", false).apply()
+                protecao()
+            }
+        }
+        if (whatsapp || sms) {
+            botao("PERMITIR ACESSO NO ANDROID") {
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
+            if (!avisos && Build.VERSION.SDK_INT >= 33) botao("PERMITIR AVISOS DA ESCUDO IA") {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
+            }
+        }
+        texto("A ESCUDO IA não examina SMS sem prévia, SMS antigos, nem aplicativos incompatíveis. A ausência de alerta NÃO significa segurança. Não há envio automático de alertas a familiares.", 17f)
         voltar()
+    }
+
+    private fun testarSmsSimulado() {
+        val smsFicticio = "Sua encomenda foi retida. Pague a taxa para liberar em https://exemplo.invalid/entrega"
+        val analise = SmsProtection.analisarPrevia(smsFicticio)
+        if (analise.risco != Risk.ALTO) {
+            aviso("A análise do SMS de teste não identificou risco alto. O teste falhou.")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 44)
+            aviso("Autorize as notificações da ESCUDO IA e repita a simulação de SMS.")
+            return
+        }
+        val gerente = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val canal = "escudo_teste_sms"
+        gerente.createNotificationChannel(
+            NotificationChannel(canal, "Teste de alerta de SMS", NotificationManager.IMPORTANCE_HIGH)
+        )
+        val abrir = Intent(this, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(
+            this, 78, abrir, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val alerta = Notification.Builder(this, canal)
+            .setSmallIcon(R.drawable.escudo_icon)
+            .setContentTitle("TESTE ESCUDO IA — SMS suspeito")
+            .setContentText("SIMULAÇÃO: encomenda retida e link para cobrança.")
+            .setStyle(Notification.BigTextStyle().bigText(
+                "SIMULAÇÃO DO APLICATIVO. Nenhum SMS foi recebido. Este teste demonstra apenas que o detector reconhece um padrão de risco e que o Android exibe o alerta."
+            ))
+            .setContentIntent(pending).setAutoCancel(true).build()
+        gerente.notify(777, alerta)
+        aviso("O detector classificou um SMS fictício como risco alto. Deslize a barra de notificações para procurar o alerta de TESTE.\n\nIsso não comprova que SMS reais estão sendo monitorados. Para testar a integração, receba um SMS real de outro aparelho, com a proteção ativada.")
     }
 
     private fun testarAlertaSimulado() {
@@ -443,7 +503,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             prefs.edit().putBoolean("letras", !letras).apply()
             ajustes()
         }
-        caixa("Proteção opcional: apenas prévias autorizadas do WhatsApp.\n\nMensagens analisadas não são armazenadas nem enviadas a servidores.\n\nPessoa de confiança fica somente neste aparelho.\n\nNão há alertas automáticos ao familiar nesta versão.\n\nA análise pode errar e não substitui conferência por canais oficiais.")
+        caixa("Proteção opcional: prévias autorizadas do WhatsApp e/ou de aplicativos de SMS selecionados, com autorizações separadas.\n\nMensagens analisadas não são armazenadas nem enviadas a servidores.\n\nPessoa de confiança fica somente neste aparelho.\n\nNão há alertas automáticos ao familiar nesta versão.\n\nA análise pode errar e não verifica a identidade dos remetentes nem a reputação real dos links. Use os canais oficiais.")
         botao("REVER ACESSO ÀS NOTIFICAÇÕES", escuro) {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
@@ -463,9 +523,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         if (i == null) return
         if (i.getBooleanExtra("aviso_escudo", false)) {
             i.removeExtra("aviso_escudo")
+            val origem = if (i.getStringExtra("aviso_origem") == "SMS") "SMS" else "WhatsApp"
+            i.removeExtra("aviso_origem")
             resultado(Analise(Risk.ALTO,
-                listOf("Uma prévia de notificação autorizada apresentou sinais preocupantes."),
-                "Antes de enviar dinheiro ou códigos, confirme com a pessoa pelo número que você já conhece."))
+                listOf("Uma prévia autorizada de " + origem + " apresentou sinais de risco. Não é possível confirmar a identidade do remetente."),
+                "Não abra links nem envie dinheiro ou códigos. Confirme a situação pelo canal oficial."))
         } else if (i.action == Intent.ACTION_SEND && i.type == "text/plain") {
             val partilhado = i.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
             if (partilhado.isNotBlank()) {

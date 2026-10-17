@@ -16,8 +16,13 @@ object RiskEngine {
         val s = normal(texto)
         var pontos = 0
         val motivos = mutableListOf<String>()
-        val pedeSegredo = Regex("\\b(senha|codigo|token|otp|pin)\\b").containsMatchIn(s) &&
-            Regex("informe|envie|mande|passe|compartilhe|digite|preciso do").containsMatchIn(s)
+        // "Não compartilhe seu código" é orientação de segurança, não pedido de segredo.
+        val semNegacoes = s.replace(
+            Regex("\\b(?:nao|nunca|jamais)\\s+(?:(?:o|seu|esse)\\s+)?(?:compartilhe|envie|informe|digite|passe|mande)\\b"),
+            ""
+        )
+        val pedeSegredo = Regex("\\b(senha|codigo|token|otp|pin)\\b").containsMatchIn(semNegacoes) &&
+            Regex("\\b(informe|envie|mande|passe|compartilhe|digite|preciso do)\\b").containsMatchIn(semNegacoes)
         val mudaNumero = Regex("troquei|mudei|numero novo|celular novo|outro numero").containsMatchIn(s)
         val pedePix = Regex("\\b(pix|transferencia|deposito)\\b").containsMatchIn(s)
         val pressa = Regex("\\b(urgente|agora|imediatamente|rapido|hoje)\\b").containsMatchIn(s)
